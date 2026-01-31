@@ -1,5 +1,6 @@
 import logging
 import json
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
@@ -34,11 +35,13 @@ class ModelStorage:
     def upload_model(self, local_model_path: str, model_version: str, model_format: str = "onnx") -> str:
         """Upload a model file to storage (S3 or local filesystem)."""
         if self.local_mode:
-            dest_path = self.storage_path / "models" / f"{model_version}.{model_format}"
-            import shutil
-            shutil.copy2(local_model_path, dest_path)
-            logger.info(f"Saved model to {dest_path}")
-            return str(dest_path)
+            try:
+                dest_path = self.storage_path / "models" / f"{model_version}.{model_format}"
+                shutil.copy2(local_model_path, dest_path)
+                logger.info(f"Saved model to {dest_path}")
+                return str(dest_path)
+            except (OSError, IOError) as e:
+                raise RuntimeError(f"Failed to save model {model_version}: {e}")
         else:
             if self.s3_ops is None: raise RuntimeError("s3_ops required for S3 mode")
             s3_key: str = f"models/{model_version}.{model_format}"
@@ -57,11 +60,14 @@ class ModelStorage:
     def upload_metadata(self, metadata: dict[str, Any], model_version: str) -> str:
         """Upload model metadata to storage (S3 or local filesystem)."""
         if self.local_mode:
-            dest_path = self.storage_path / "metadata" / f"{model_version}.json"
-            with open(dest_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
-            logger.info(f"Saved metadata to {dest_path}")
-            return str(dest_path)
+            try:
+                dest_path = self.storage_path / "metadata" / f"{model_version}.json"
+                with open(dest_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                logger.info(f"Saved metadata to {dest_path}")
+                return str(dest_path)
+            except (OSError, IOError, TypeError) as e:
+                raise RuntimeError(f"Failed to save metadata for {model_version}: {e}")
         else:
             if self.s3_ops is None: raise RuntimeError("s3_ops required for S3 mode")
             s3_key: str = f"metadata/{model_version}.json"
@@ -72,11 +78,14 @@ class ModelStorage:
     def upload_baseline(self, baseline_stats: dict[str, Any], model_version: str) -> str:
         """Upload baseline statistics to storage (S3 or local filesystem)."""
         if self.local_mode:
-            dest_path = self.storage_path / "baselines" / f"{model_version}_baseline.json"
-            with open(dest_path, 'w') as f:
-                json.dump(baseline_stats, f, indent=2)
-            logger.info(f"Saved baseline to {dest_path}")
-            return str(dest_path)
+            try:
+                dest_path = self.storage_path / "baselines" / f"{model_version}_baseline.json"
+                with open(dest_path, 'w') as f:
+                    json.dump(baseline_stats, f, indent=2)
+                logger.info(f"Saved baseline to {dest_path}")
+                return str(dest_path)
+            except (OSError, IOError, TypeError) as e:
+                raise RuntimeError(f"Failed to save baseline for {model_version}: {e}")
         else:
             if self.s3_ops is None: raise RuntimeError("s3_ops required for S3 mode")
             s3_key: str = f"baselines/{model_version}_baseline.json"
@@ -89,7 +98,6 @@ class ModelStorage:
         if self.local_mode:
             source_path = self.storage_path / "models" / f"{model_version}.{model_format}"
             if not source_path.exists(): return False
-            import shutil
             shutil.copy2(source_path, local_path)
             return True
         else:
