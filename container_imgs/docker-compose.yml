@@ -1,0 +1,105 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: container_imgs/Dockerfile.api
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-dev-local}
+        BUILD_DATE: ${BUILD_DATE:-2026-01-31T00:00:00Z}
+        VERSION: ${VERSION:-dev}
+    image: mlops-api:latest
+    container_name: mlops-api-dev
+    ports:
+      - "8000:8000"
+    environment:
+      # Application Configuration
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+      
+      # Storage Configuration (use local filesystem, not S3)
+      LOCAL_STORAGE_MODE: true
+      LOCAL_STORAGE_PATH: /app/models
+      
+      # Model Configuration
+      MODEL_RELOAD_INTERVAL: 60  # 1 min for dev
+      
+      # Monitoring (disabled for local dev)
+      ENABLE_METRICS: false
+      ENABLE_DRIFT_DETECTION: false
+      
+    volumes:
+      # Mount source code for hot-reload during development
+      - ../src:/app/src:ro
+      
+      # Mount local data directory for testing
+      - ../data:/app/data:ro
+      
+      # Mount models directory for local storage mode
+      - ../models:/app/models:rw
+      
+    networks:
+      - mlops-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    
+    restart: unless-stopped
+
+  training:
+    build:
+      context: ..
+      dockerfile: container_imgs/Dockerfile.train
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-dev-local}
+        BUILD_DATE: ${BUILD_DATE:-2026-01-31T00:00:00Z}
+        VERSION: ${VERSION:-dev}
+    image: mlops-training:latest
+    container_name: mlops-training-dev
+    environment:
+      # Application Configuration
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      
+      # Storage Configuration (use local filesystem, not S3)
+      LOCAL_STORAGE_MODE: true
+      LOCAL_STORAGE_PATH: /app/models
+      
+      # Training defaults
+      DATA_PATH: ${DATA_PATH:-/app/data/training_data.csv}
+      TARGET_COLUMN: ${TARGET_COLUMN:-approved}
+      TEST_SIZE: ${TEST_SIZE:-0.2}
+      
+    volumes:
+      # Mount source code
+      - ../src:/app/src:ro
+      
+      # Mount data directory (training data)
+      - ../data:/app/data:rw
+      
+      # Mount outputs directory
+      - ../outputs:/app/outputs:rw
+      
+      # Mount models directory
+      - ../models:/app/models:rw
+      
+    command: >
+      --data ${DATA_PATH:-/app/data/training_data.csv}
+      --target ${TARGET_COLUMN:-approved}
+      --test-size ${TEST_SIZE:-0.2}
+      
+    networks:
+      - mlops-network
+    
+    # Run once and exit
+    restart: "no"
+    
+    profiles:
+      - train
+
+networks:
+  mlops-network:
+    driver: bridge

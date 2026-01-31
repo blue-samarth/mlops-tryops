@@ -1,0 +1,115 @@
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+
+# Build-time metadata (pass via --build-arg)
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE
+ARG VERSION=1.0.0
+
+WORKDIR /build
+
+# Install system dependencies for scientific computing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gfortran \
+    libopenblas-dev \
+    liblapack-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable BuildKit cache mount for faster rebuilds
+# Install ALL dependencies including dev (needed for training)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    uv sync --frozen --no-install-project
+
+# Copy source code and install project
+COPY src/ /build/src/
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
+
+# ============================================================================
+# Stage 2: Runtime - Training environment
+# ============================================================================
+FROM python:3.13-slim-bookworm AS runtime
+
+# Re-declare ARGs for runtime stage
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE
+ARG VERSION=1.0.0
+
+# OCI-compliant metadata labels
+LABEL org.opencontainers.image.title="MLOps Training" \
+      org.opencontainers.image.description="Batch training pipeline for ML models" \
+      org.opencontainers.image.vendor="ML Team" \
+      org.opencontainers.image.authors="ml-team@company.com" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/company/mlops"
+
+# Security: Create non-root user with explicit UID/GID
+RUN groupadd -r mlops --gid=1000 && \
+    useradd -r -g mlops --uid=1000 --home-dir=/app --shell=/bin/bash mlops
+
+WORKDIR /app
+
+# Install runtime dependencies for scientific computing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libopenblas0 \
+    liblapack3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from builder
+COPY --from=builder --chown=mlops:mlops /build/.venv /app/.venv
+
+# Copy application code
+COPY --chown=mlops:mlops src/ ./src/
+
+# Write git commit to file for model lineage tracking
+RUN echo "${GIT_COMMIT}" > /app/.git_commit && \
+    chown mlops:mlops /app/.git_commit
+
+# Copy scripts directory
+COPY --chown=mlops:mlops scripts/ ./scripts/
+
+# Create directory structure for training pipeline
+RUN mkdir -p \
+    /app/data \
+    /app/outputs \
+    /app/models \
+    /tmp/training && \
+    chown -R mlops:mlops /app /tmp/training
+
+# Set environment variables
+# Scientific computing optimizations to prevent CPU oversubscription
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PYTHONHASHSEED=random \
+    # Application defaults
+    LOG_LEVEL=info \
+    ENVIRONMENT=production \
+    # NumPy/SciPy thread limiting (prevents oversubscription)
+    OMP_NUM_THREADS=4 \
+    MKL_NUM_THREADS=4 \
+    OPENBLAS_NUM_THREADS=4 \
+    NUMEXPR_NUM_THREADS=4 \
+    # Memory optimizations
+    MALLOC_ARENA_MAX=2
+
+# Switch to non-root user
+USER mlops
+
+# Volume mount points (documented)
+VOLUME ["/app/data", "/app/outputs", "/app/models"]
+
+# Default command: Show help
+ENTRYPOINT ["python", "-m", "src.train.train"]
+CMD ["--help"]
+

@@ -128,8 +128,8 @@ class ModelInfoResponse(BaseModel):
     feature_names: list[str] = Field(..., description="Expected feature names")
     n_features: int = Field(..., description="Number of features")
     model_type: str = Field(..., description="Model type")
-    promoted_at: str = Field(..., description="Promotion timestamp")
-    promoted_by: str = Field(..., description="Who promoted the model")
+    promoted_at: str | None = Field(None, description="Promotion timestamp")
+    promoted_by: str | None = Field(None, description="Who promoted the model")
     
     class Config:
         json_schema_extra = {

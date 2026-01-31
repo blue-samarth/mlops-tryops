@@ -100,9 +100,9 @@ helm/
 *.yml
 
 # ========================================
-# Scripts (Not needed in container)
+# Scripts - Allow for training container
 # ========================================
-scripts/
+# scripts/  # Commented out - needed for training helpers
 
 # ========================================
 # Temporary Files
