@@ -1,6 +1,3 @@
-"""
-Tests for DriftService.
-"""
 import pytest
 import time
 from unittest.mock import patch, MagicMock
@@ -67,7 +64,7 @@ class TestDriftService:
         
         time.sleep(0.2)  # Let it stop
         
-        assert not service._thread.is_alive() or service._thread is None
+        assert service._thread is None or not service._thread.is_alive()
     
     @patch('src.monitoring.drift_service.settings')
     def test_service_disabled(self, mock_settings, sample_baseline):

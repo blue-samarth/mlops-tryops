@@ -1,4 +1,3 @@
-"""Tests for ServingPointerManager."""
 from unittest.mock import MagicMock, patch
 import pytest
 

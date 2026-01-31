@@ -32,9 +32,30 @@ def generate_model_version(prefix: str = "v") -> str:
 
 
 def get_git_commit() -> str | None:
-    """Get current git commit hash."""
+    """Get git commit from build-time file or git command.
+    
+    Prioritizes reading from /app/.git_commit (written at Docker build time)
+    to maintain model lineage in containerized environments where git is not available.
+    Falls back to git command for local development.
+    """
+    # Try build-time file first (container environment)
     try:
-        result: subprocess.CompletedProcess = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, timeout=5)
+        with open('/app/.git_commit', 'r') as f:
+            commit = f.read().strip()
+            if commit and commit != 'unknown':
+                return commit
+    except FileNotFoundError:
+        pass
+    
+    # Fallback to git command (local development)
+    try:
+        result: subprocess.CompletedProcess = subprocess.run(
+            ["git", "rev-parse", "HEAD"], 
+            capture_output=True, 
+            text=True, 
+            check=True, 
+            timeout=5
+        )
         return result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return None
@@ -48,11 +69,18 @@ class ModelTrainer:
         Initialize trainer.
         
         Args:
-            s3_bucket: S3 bucket name (defaults to settings)
+            s3_bucket: S3 bucket name (defaults to settings, ignored in local mode)
         """
         self.s3_bucket: str = s3_bucket or settings.S3_BUCKET
-        s3_ops: S3Operations = S3Operations(bucket_name=self.s3_bucket, region_name=settings.AWS_REGION)
-        self.model_storage: ModelStorage = ModelStorage(s3_ops)
+        
+        # Initialize storage (S3 or local filesystem)
+        if settings.LOCAL_STORAGE_MODE:
+            logger.info("Using local storage mode for development")
+            self.model_storage: ModelStorage = ModelStorage(s3_ops=None)
+        else:
+            s3_ops: S3Operations = S3Operations(bucket_name=self.s3_bucket, region_name=settings.AWS_REGION)
+            self.model_storage: ModelStorage = ModelStorage(s3_ops)
+        
         self.model_version: str = generate_model_version()
         self.git_commit: str | None = get_git_commit()
         

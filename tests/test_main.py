@@ -1,4 +1,3 @@
-"""Tests for main.py API application."""
 from unittest.mock import MagicMock, patch, AsyncMock
 import pytest
 from fastapi.testclient import TestClient
