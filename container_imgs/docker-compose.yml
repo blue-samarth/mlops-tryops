@@ -23,9 +23,10 @@ services:
       # Model Configuration
       MODEL_RELOAD_INTERVAL: 60  # 1 min for dev
       
-      # Monitoring (disabled for local dev)
-      ENABLE_METRICS: false
-      ENABLE_DRIFT_DETECTION: false
+      # Monitoring (enabled for local testing)
+      ENABLE_METRICS: true
+      ENABLE_PROMETHEUS: true
+      ENABLE_DRIFT_DETECTION: true
       
     volumes:
       # Mount source code for hot-reload during development
@@ -100,6 +101,50 @@ services:
     profiles:
       - train
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mlops-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mlops-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
 networks:
   mlops-network:
     driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:

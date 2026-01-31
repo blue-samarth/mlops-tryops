@@ -185,11 +185,41 @@ htmlcov/
 .coverage
 coverage.xml
 
-# Terraform/IaC state files
-terraform/
+# ========================================
+# Terraform / Infrastructure as Code
+# ========================================
+# State files (contain infrastructure state)
 *.tfstate
+*.tfstate.*
 *.tfstate.backup
+
+# Terraform directory (plugins and modules)
 .terraform/
+.terraform.lock.hcl
+
+# Variable files (may contain secrets)
+*.tfvars
+*.tfvars.json
+terraform.tfvars
+terraform.tfvars.json
+
+# Override files (local environment-specific)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Plan files (may contain sensitive data)
+*.tfplan
+*.tfplan.json
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Local Terraform CLI configuration
+.terraformrc
+terraform.rc
 
 # Local data samples (use DVC instead)
 data/samples/

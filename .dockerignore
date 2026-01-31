@@ -160,10 +160,17 @@ pytest.ini
 test_api.py
 
 # Infrastructure as Code (not needed in runtime)
+infra/
 terraform/
 helm/
 k8s/
+*.tf
 *.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfplan
 
 # ========================================
 # What TO Include (negations)
