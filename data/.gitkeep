@@ -1,0 +1,19 @@
+# Data directory for training/test datasets
+
+Add `.csv` files here for training and testing.
+
+## Generated Data
+
+Use the script to generate data:
+
+```bash
+python scripts/generate_dummy_data.py --output data/training_data.csv --samples 5000
+python scripts/generate_dummy_data.py --output data/test_data.csv --samples 1000
+python scripts/generate_dummy_data.py --output data/drifted_data.csv --samples 1000 --drift
+```
+
+## Structure
+
+- `training_data.csv` - Normal training data
+- `test_data.csv` - Test data (same distribution)
+- `drifted_data.csv` - Drifted data for testing drift detection

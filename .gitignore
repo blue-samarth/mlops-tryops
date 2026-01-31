@@ -1,0 +1,196 @@
+# ========================================
+# uv - Python Package Manager
+# ========================================
+.venv/
+.python-version
+uv.lock
+
+# ========================================
+# Python
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ========================================
+# Virtual Environments
+# ========================================
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# ========================================
+# DVC (Data Version Control)
+# ========================================
+/dvc.lock
+.dvc/cache/
+.dvc/tmp/
+.dvc/plots/
+
+# ========================================
+# MLOps / Model Artifacts
+# ========================================
+*.onnx
+*.pkl
+*.joblib
+*.h5
+*.pb
+models/
+artifacts/
+mlruns/
+wandb/
+
+# ========================================
+# Data (keep in DVC, not git)
+# ========================================
+data/raw/
+data/processed/
+data/interim/
+*.csv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# ========================================
+# Jupyter Notebooks
+# ========================================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+*.ipynb
+
+# ========================================
+# Testing
+# ========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.log
+
+# ========================================
+# IDEs and Editors
+# ========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ========================================
+# AWS / Cloud Credentials (CRITICAL!)
+# ========================================
+.aws/
+*.pem
+credentials
+*.key
+.env
+.env.local
+.env.*.local
+
+# ========================================
+# Docker
+# ========================================
+docker-compose.override.yml
+*.pid
+
+# ========================================
+# Kubernetes
+# ========================================
+kubeconfig
+*.kubeconfig
+
+# ========================================
+# Temporary Files
+# ========================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# ========================================
+# OS Files
+# ========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ========================================
+# Monitoring / Metrics
+# ========================================
+drift_reports/
+logs/
+*.log
+
+# ========================================
+# Project Specific
+# ========================================
+# Keep baseline JSONs in git for reference (small files)
+# baselines/
+
+# Downloaded models (should be in S3)
+/tmp/
+
+# Local testing outputs
+outputs/
+
+# Generated documentation files
+TECHNICAL_DOCUMENTATION.html
+all_python_files.txt
+
+# Local run scripts (developer-specific)
+run_api.sh
+run_train.sh
+
+# Docker/Kubernetes (managed separately or generated)
+docker-compose.override.yml
+Makefile
+k8s/
+helm/
+
+# Build scripts (may vary per environment)
+scripts/build*.sh
+scripts/deploy*.sh
+
+# Coverage reports (already ignored but being explicit)
+htmlcov/
+.coverage
+coverage.xml
+
+# Terraform/IaC state files
+terraform/
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Local data samples (use DVC instead)
+data/samples/
+data/local/
