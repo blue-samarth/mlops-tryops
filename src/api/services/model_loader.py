@@ -67,17 +67,15 @@ class ModelLoader:
     
     def _load_latest_local_model(self) -> None:
         """Load the latest model from local storage."""
-        from pathlib import Path
-        
-        # Get list of available models
+        # Get list of available models (already sorted by model_storage)
         versions = self.model_storage.list_model_versions()
         
         if not versions:
             logger.warning("No models found in local storage")
             return
         
-        # Sort by version (timestamp-based) and get latest
-        latest_version = sorted(versions, reverse=True)[0]
+        # Get latest version (already sorted in reverse order)
+        latest_version = versions[0]
         logger.info(f"Found latest model: {latest_version}")
         
         with self.model_lock:
