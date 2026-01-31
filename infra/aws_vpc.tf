@@ -110,9 +110,12 @@ resource "aws_route_table" "private" {
   count  = length(local.availability_zones)
   vpc_id = aws_vpc.main.id
 
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = local.enable_nat_gateway ? (local.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id) : null
+  dynamic "route" {
+    for_each = local.enable_nat_gateway ? [1] : []
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = local.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
+    }
   }
 
   tags = merge(
@@ -177,7 +180,10 @@ resource "aws_iam_role_policy" "vpc_flow_logs" {
           "logs:DescribeLogGroups",
           "logs:DescribeLogStreams"
         ]
-        Resource = "*"
+        Resource = [
+          aws_cloudwatch_log_group.vpc_flow_logs.arn,
+          "${aws_cloudwatch_log_group.vpc_flow_logs.arn}:*"
+        ]
       }
     ]
   })

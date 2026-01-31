@@ -47,13 +47,10 @@ locals {
   metrics_retention_days = coalesce(var.metrics_retention_days, 30)
 
   # Common Tags
-  common_tags = merge(
-    {
-      Project     = local.name
-      Environment = local.environment
-      Namespace   = local.namespace
-      ManagedBy   = "Terraform"
-      CreatedAt   = timestamp()
-    }
-  )
+  common_tags = {
+    Project     = local.name
+    Environment = local.environment
+    Namespace   = local.namespace
+    ManagedBy   = "Terraform"
+  }
 }
