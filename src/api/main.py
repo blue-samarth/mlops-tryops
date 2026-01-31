@@ -57,16 +57,16 @@ async def lifespan(app: FastAPI):
         if model_loader.baseline:
             drift_service.update_baseline(
                 model_loader.baseline, 
-                model_loader.version or "unknown"
+                model_loader.current_version or "unknown"
             )
         
         drift_service.start()
         logger.info("Drift detection service started")
     
     # Set model info metric
-    if model_loader.version:
+    if model_loader.current_version:
         metrics.model_info.info({
-            "version": model_loader.version,
+            "version": model_loader.current_version,
             "bucket": settings.S3_BUCKET,
             "environment": settings.ENVIRONMENT,
         })

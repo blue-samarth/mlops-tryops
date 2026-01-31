@@ -21,16 +21,21 @@ class ModelLoader:
         Initialize model loader.
         
         Args:
-            s3_bucket: S3 bucket name (defaults to settings)
+            s3_bucket: S3 bucket name (defaults to settings, ignored in local mode)
             environment: Environment name (defaults to settings)
         """
         self.s3_bucket: str = s3_bucket or settings.S3_BUCKET
         self.environment: str = environment or settings.ENVIRONMENT
+        self.local_mode = settings.LOCAL_STORAGE_MODE
         
-        self.pointer_manager = ServingPointerManager(s3_bucket=self.s3_bucket, environment=self.environment, region=settings.AWS_REGION)
-        
-        s3_ops = S3Operations(bucket_name=self.s3_bucket, region_name=settings.AWS_REGION)
-        self.model_storage = ModelStorage(s3_ops)
+        if self.local_mode:
+            logger.info("Running in local storage mode - S3/ServingPointer disabled")
+            self.pointer_manager = None  # type: ignore
+            self.model_storage = ModelStorage(s3_ops=None)
+        else:
+            self.pointer_manager = ServingPointerManager(s3_bucket=self.s3_bucket, environment=self.environment, region=settings.AWS_REGION)
+            s3_ops = S3Operations(bucket_name=self.s3_bucket, region_name=settings.AWS_REGION)
+            self.model_storage = ModelStorage(s3_ops)
 
         self.model: ort.InferenceSession | None = None
         self.metadata: dict[str, Any] | None = None
@@ -44,8 +49,14 @@ class ModelLoader:
         logger.info(f"Initialized ModelLoader for {self.environment}")
     
     def load_initial_model(self) -> None:
-        """Load initial model from serving pointer."""
+        """Load initial model from serving pointer or local storage."""
+        if self.local_mode:
+            logger.info("Local storage mode - attempting to load latest model...")
+            self._load_latest_local_model()
+            return
+        
         logger.info("Loading initial model...")
+        if self.pointer_manager is None: raise RuntimeError("pointer_manager required for S3 mode")
         pointer = self.pointer_manager.get_current_pointer()
         
         if not pointer:
@@ -53,6 +64,52 @@ class ModelLoader:
             return
         
         self._load_model_from_pointer(pointer)
+    
+    def _load_latest_local_model(self) -> None:
+        """Load the latest model from local storage."""
+        # Get list of available models (already sorted by model_storage)
+        versions = self.model_storage.list_model_versions()
+        
+        if not versions:
+            logger.warning("No models found in local storage")
+            return
+        
+        # Get latest version (already sorted in reverse order)
+        latest_version = versions[0]
+        logger.info(f"Found latest model: {latest_version}")
+        
+        with self.model_lock:
+            if latest_version == self.current_version:
+                logger.info(f"Model {latest_version} already loaded")
+                return
+            
+            # In local mode, model files are already on disk
+            models_dir = Path(settings.LOCAL_STORAGE_PATH) / "models"
+            local_model_path = str(models_dir / f"{latest_version}.onnx")
+            
+            if not Path(local_model_path).exists():
+                logger.error(f"Model file not found: {local_model_path}")
+                return
+            
+            logger.info(f"Loading model from {local_model_path}...")
+            
+            session_options = ort.SessionOptions()
+            session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            
+            self.model = ort.InferenceSession(local_model_path, session_options)
+            self.metadata = self.model_storage.get_model_metadata(latest_version)
+            self.baseline = self.model_storage.get_baseline_stats(latest_version)
+            
+            if not self.metadata:
+                logger.error(f"Failed to load metadata for {latest_version}")
+                return
+            
+            self.current_version = latest_version
+            
+            logger.info(f"Successfully loaded model {latest_version}")
+            logger.info(f"Schema hash: {self.metadata.get('schema', {}).get('schema_hash')}")
+            logger.info(f"Metrics: {self.metadata.get('metrics')}")
     
     def _load_model_from_pointer(self, pointer: dict[str, Any]) -> None:
         """
@@ -105,6 +162,10 @@ class ModelLoader:
     
     def start_hot_reload(self) -> None:
         """Start background thread for hot-reloading."""
+        if self.local_mode:
+            logger.info("Local storage mode - hot-reload disabled")
+            return
+        
         if self._reload_thread and self._reload_thread.is_alive():
             logger.warning("Hot-reload thread already running")
             return
@@ -161,7 +222,11 @@ class ModelLoader:
                 raise RuntimeError("No model loaded")
             
             schema = self.metadata.get("schema", {})
-            pointer = self.pointer_manager.get_current_pointer()
+            
+            # Get pointer info only if not in local mode
+            pointer = None
+            if self.pointer_manager is not None:
+                pointer = self.pointer_manager.get_current_pointer()
             
             return {
                 "model_version": self.current_version,
