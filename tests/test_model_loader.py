@@ -1,5 +1,3 @@
-"""Tests for ModelLoader service."""
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 import pytest
@@ -205,6 +203,7 @@ class TestModelLoader:
         loader = ModelLoader()
         loader.start_hot_reload()
         
+        assert loader._reload_thread is not None
         assert loader._reload_thread.is_alive()
         
         loader.stop_hot_reload()

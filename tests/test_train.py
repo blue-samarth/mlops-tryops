@@ -1,5 +1,3 @@
-"""Tests for train.py module."""
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch, Mock
 import pandas as pd

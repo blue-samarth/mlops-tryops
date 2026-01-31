@@ -1,4 +1,3 @@
-"""Additional tests for DriftDetector to improve coverage."""
 import pandas as pd
 import numpy as np
 import pytest

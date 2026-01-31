@@ -1,17 +1,3 @@
-"""
-Test suite for critical P0/P1 bug fixes.
-
-Tests verify:
-- Memory leak prevention (temp file cleanup)
-- PSI normalization correctness
-- Input validation for inf/nan
-- Race condition prevention (moved version check inside lock)
-- Schema hash collision resistance (64→128 bits)
-- Baseline sampling reproducibility
-- Request size DoS prevention
-- Request ID injection prevention
-- Deep copy snapshot protection
-"""
 import pytest
 import numpy as np
 from pathlib import Path

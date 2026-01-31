@@ -4,6 +4,10 @@ from pydantic import Field
 
 class Settings(BaseSettings):
 
+    # Storage Configuration
+    LOCAL_STORAGE_MODE: bool = Field(default=False, description="Use local filesystem instead of S3 (for development)")
+    LOCAL_STORAGE_PATH: str = Field(default="/app/models", description="Local storage path when LOCAL_STORAGE_MODE=true")
+    
     AWS_REGION: str = Field(default="us-east-1", description="AWS region")
     S3_BUCKET: str = Field(default="mlops-project-models", description="S3 bucket for models")
 

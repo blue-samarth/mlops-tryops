@@ -1,6 +1,3 @@
-"""
-Tests for PredictionLogger.
-"""
 import pytest
 from datetime import datetime
 import threading

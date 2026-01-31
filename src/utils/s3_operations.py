@@ -2,7 +2,6 @@ import json
 import re
 from typing import Any
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
