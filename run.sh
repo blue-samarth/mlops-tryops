@@ -25,6 +25,7 @@ case "${1:-help}" in
   monitoring)
     echo "Starting full monitoring stack..."
     docker-compose -f $COMPOSE_FILE --profile monitoring up -d
+    docker-compose -f $COMPOSE_FILE up -d api
     echo "Services started:"
     echo "  API: http://localhost:8000"
     echo "  Prometheus: http://localhost:9090"
