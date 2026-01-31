@@ -12,13 +12,23 @@ case "${1:-help}" in
     docker-compose -f $COMPOSE_FILE --profile train up training
     echo "Training complete. Model saved to ./models/"
     ;;
-    
+  
   api)
     echo "Starting API server..."
     docker-compose -f $COMPOSE_FILE up -d api
     echo "API running at http://localhost:8000"
     echo "  Health: http://localhost:8000/health"
     echo "  Docs: http://localhost:8000/docs"
+    echo "  Metrics: http://localhost:8000/metrics"
+    ;;
+  
+  monitoring)
+    echo "Starting full monitoring stack..."
+    docker-compose -f $COMPOSE_FILE --profile monitoring up -d
+    echo "Services started:"
+    echo "  API: http://localhost:8000"
+    echo "  Prometheus: http://localhost:9090"
+    echo "  Grafana: http://localhost:3000 (admin/admin)"
     ;;
     
   all)
@@ -27,7 +37,8 @@ case "${1:-help}" in
     docker-compose -f $COMPOSE_FILE --profile train up training
     
     echo ""
-    echo "Starting API..."
+    echo "Starting API with monitoring..."
+    docker-compose -f $COMPOSE_FILE --profile monitoring up -d
     docker-compose -f $COMPOSE_FILE up -d api
     
     echo ""
@@ -57,12 +68,13 @@ case "${1:-help}" in
     cat << EOF
 MLOps Workflow Commands:
 
-  ./run.sh train    - Train a new model
-  ./run.sh api      - Start API server
-  ./run.sh all      - Train + Start API (full workflow)
-  ./run.sh stop     - Stop all services
-  ./run.sh logs     - View API logs
-  ./run.sh clean    - Clean everything
+  ./run.sh train       - Train a new model
+  ./run.sh api         - Start API server only
+  ./run.sh monitoring  - Start API + Prometheus + Grafana
+  ./run.sh all         - Train + Start full stack
+  ./run.sh stop        - Stop all services
+  ./run.sh logs        - View API logs
+  ./run.sh clean       - Clean everything
 
 Environment variables:
   DATA_PATH=/app/data/your_data.csv
