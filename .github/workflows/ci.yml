@@ -5,6 +5,10 @@ on:
     branches: [master, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  security-events: write
+
 env:
   PYTHON_VERSION: "3.13"
 
@@ -43,6 +47,22 @@ jobs:
               - 'container_imgs/Dockerfile.train'
               - 'pyproject.toml'
               - 'uv.lock'
+
+  secrets-scan:
+    name: Secrets Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   test:
     name: Run Tests

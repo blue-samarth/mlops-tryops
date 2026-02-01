@@ -82,6 +82,14 @@ jobs:
           output: trivy-api-container.sarif
           severity: CRITICAL,HIGH
 
+      - name: Check for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mlops-api:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
       - name: Upload Trivy results to Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -95,6 +103,15 @@ jobs:
           scan-ref: .
           format: sarif
           output: trivy-api-fs.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Check filesystem for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: 1
           severity: CRITICAL,HIGH
 
       - name: Upload filesystem scan results
@@ -112,12 +129,6 @@ jobs:
           name: api-image
           path: /tmp/api-image.tar
           retention-days: 1
-
-      - name: Cleanup local Docker images
-        if: always()
-        run: |
-          docker rmi mlops-api:scan || true
-          docker image prune -f
 
   security-scan-training:
     name: Security Scan - Training
@@ -150,6 +161,14 @@ jobs:
           output: trivy-training-container.sarif
           severity: CRITICAL,HIGH
 
+      - name: Check for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mlops-training:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
       - name: Upload Trivy results to Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -165,12 +184,6 @@ jobs:
           name: training-image
           path: /tmp/training-image.tar
           retention-days: 1
-
-      - name: Cleanup local Docker images
-        if: always()
-        run: |
-          docker rmi mlops-training:scan || true
-          docker image prune -f
 
   push-and-sign-api:
     name: Push and Sign - API
@@ -267,18 +280,6 @@ jobs:
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
 
-      - name: Cleanup image artifact
-        if: always()
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: api-image
-
-      - name: Cleanup local Docker images
-        if: always()
-        run: |
-          docker rmi -f $(docker images -q) || true
-          docker system prune -a -f
-
   push-and-sign-training:
     name: Push and Sign - Training
     runs-on: ubuntu-latest
@@ -374,14 +375,21 @@ jobs:
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
 
-      - name: Cleanup image artifact
-        if: always()
+  cleanup:
+    name: Cleanup Artifacts
+    runs-on: ubuntu-latest
+    needs: [security-scan-api, security-scan-training, push-and-sign-api, push-and-sign-training]
+    if: always()
+    
+    steps:
+      - name: Delete API image artifact
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: api-image
+          failOnError: false
+
+      - name: Delete Training image artifact
         uses: geekyeggo/delete-artifact@v5
         with:
           name: training-image
-
-      - name: Cleanup local Docker images
-        if: always()
-        run: |
-          docker rmi -f $(docker images -q) || true
-          docker system prune -a -f
+          failOnError: false
