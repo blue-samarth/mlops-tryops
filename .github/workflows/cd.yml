@@ -113,6 +113,12 @@ jobs:
           path: /tmp/api-image.tar
           retention-days: 1
 
+      - name: Cleanup local Docker images
+        if: always()
+        run: |
+          docker rmi mlops-api:scan || true
+          docker image prune -f
+
   security-scan-training:
     name: Security Scan - Training
     runs-on: ubuntu-latest
@@ -159,6 +165,12 @@ jobs:
           name: training-image
           path: /tmp/training-image.tar
           retention-days: 1
+
+      - name: Cleanup local Docker images
+        if: always()
+        run: |
+          docker rmi mlops-training:scan || true
+          docker image prune -f
 
   push-and-sign-api:
     name: Push and Sign - API
@@ -209,13 +221,18 @@ jobs:
       - name: Tag and push image
         run: |
           # Tag the scanned image with all metadata tags
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            docker tag mlops-api:scan $tag
-            docker push $tag
+          echo '${{ steps.meta.outputs.tags }}' | while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Tagging: $tag"
+              docker tag mlops-api:scan "$tag"
+              echo "Pushing: $tag"
+              docker push "$tag"
+            fi
           done
           
           # Get the digest of the pushed image
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $(echo '${{ steps.meta.outputs.tags }}' | head -1) | cut -d'@' -f2)
+          FIRST_TAG=$(echo '${{ steps.meta.outputs.tags }}' | head -1)
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$FIRST_TAG" | cut -d'@' -f2)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
         id: push
 
@@ -249,6 +266,18 @@ jobs:
           echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup image artifact
+        if: always()
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: api-image
+
+      - name: Cleanup local Docker images
+        if: always()
+        run: |
+          docker rmi -f $(docker images -q) || true
+          docker system prune -a -f
 
   push-and-sign-training:
     name: Push and Sign - Training
@@ -299,13 +328,18 @@ jobs:
       - name: Tag and push image
         run: |
           # Tag the scanned image with all metadata tags
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            docker tag mlops-training:scan $tag
-            docker push $tag
+          echo '${{ steps.meta.outputs.tags }}' | while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Tagging: $tag"
+              docker tag mlops-training:scan "$tag"
+              echo "Pushing: $tag"
+              docker push "$tag"
+            fi
           done
           
           # Get the digest of the pushed image
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $(echo '${{ steps.meta.outputs.tags }}' | head -1) | cut -d'@' -f2)
+          FIRST_TAG=$(echo '${{ steps.meta.outputs.tags }}' | head -1)
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$FIRST_TAG" | cut -d'@' -f2)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
         id: push
 
@@ -339,3 +373,15 @@ jobs:
           echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup image artifact
+        if: always()
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: training-image
+
+      - name: Cleanup local Docker images
+        if: always()
+        run: |
+          docker rmi -f $(docker images -q) || true
+          docker system prune -a -f
