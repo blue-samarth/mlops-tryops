@@ -2,7 +2,7 @@ name: CD - Deploy and Sign
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, Pushing-the-img-to-ecr]
   workflow_dispatch:
 
 permissions:
