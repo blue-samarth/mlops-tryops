@@ -37,6 +37,13 @@ CVE-2026-0861
 # Decision: Accept risk - attack surface not exposed in deployment
 CVE-2026-24882
 
+# CVE-2023-2953: OpenLDAP null pointer dereference in ber_memalloc_x
+# Status: Debian marked as "affected" with no fix available
+# Risk Assessment: LOW - LDAP client library not used in application
+# Mitigation: Application does not use LDAP functionality
+# Decision: Accept risk - dependency pulled by system packages but not used
+CVE-2023-2953
+
 # =============================================================================
 # REVIEW SCHEDULE
 # =============================================================================

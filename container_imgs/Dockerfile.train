@@ -62,6 +62,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas0 \
     liblapack3 \
     ca-certificates \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
