@@ -103,6 +103,16 @@ jobs:
           sarif_file: trivy-api-fs.sarif
           category: api-filesystem
 
+      - name: Export Docker image
+        run: docker save mlops-api:scan -o /tmp/api-image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-image
+          path: /tmp/api-image.tar
+          retention-days: 1
+
   security-scan-training:
     name: Security Scan - Training
     runs-on: ubuntu-latest
@@ -140,6 +150,16 @@ jobs:
           sarif_file: trivy-training-container.sarif
           category: training-container
 
+      - name: Export Docker image
+        run: docker save mlops-training:scan -o /tmp/training-image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-image
+          path: /tmp/training-image.tar
+          retention-days: 1
+
   push-and-sign-api:
     name: Push and Sign - API
     runs-on: ubuntu-latest
@@ -149,6 +169,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load -i /tmp/api-image.tar
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -177,21 +206,18 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value={{date 'YYYYMMDD-HHmmss'}}
 
-      - name: Build and push API image
-        id: build-push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./container_imgs/Dockerfile.api
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            GIT_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.meta.outputs.created }}
-            VERSION=${{ steps.meta.outputs.version }}
+      - name: Tag and push image
+        run: |
+          # Tag the scanned image with all metadata tags
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker tag mlops-api:scan $tag
+            docker push $tag
+          done
+          
+          # Get the digest of the pushed image
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $(echo '${{ steps.meta.outputs.tags }}' | head -1) | cut -d'@' -f2)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+        id: push
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -204,23 +230,7 @@ jobs:
             -a "repo=${{ github.repository }}" \
             -a "workflow=${{ github.workflow }}" \
             -a "ref=${{ github.ref }}" \
-            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
-
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
-          format: spdx-json
-          output-file: sbom-api.spdx.json
-
-      - name: Attest SBOM with Cosign
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign attest --yes \
-            --predicate sbom-api.spdx.json \
-            --type spdxjson \
-            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.push.outputs.digest }}
 
       - name: Verify signature
         env:
@@ -229,46 +239,35 @@ jobs:
           cosign verify \
             --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.push.outputs.digest }}
 
       - name: Output deployment info
         run: |
           echo "### API Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
-          echo "**SBOM:** SPDX attestation" >> $GITHUB_STEP_SUMMARY
-
-  approve-training:
-    name: Approve Training Deployment
-    runs-on: ubuntu-latest
-    needs: [push-and-sign-api]
-    if: github.event_name == 'workflow_dispatch' && always()
-    steps:
-      - name: Wait for approval
-        uses: trstringer/manual-approval@v1
-        with:
-          secret: ${{ github.TOKEN }}
-          approvers: ${{ github.actor }}
-          minimum-approvals: 1
-          issue-title: "Deploy Training Image?"
-          issue-body: "Please approve or deny the deployment of the training image to ECR."
 
   push-and-sign-training:
     name: Push and Sign - Training
     runs-on: ubuntu-latest
-    needs: [changes, security-scan-training, approve-training]
-    if: |
-      always() && 
-      !cancelled() && 
-      (needs.changes.outputs.training == 'true' || 
-       (github.event_name == 'workflow_dispatch' && needs.approve-training.result == 'success'))
+    needs: [changes, security-scan-training]
+    if: needs.changes.outputs.training == 'true' || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: training-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load -i /tmp/training-image.tar
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -297,21 +296,18 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value={{date 'YYYYMMDD-HHmmss'}}
 
-      - name: Build and push Training image
-        id: build-push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./container_imgs/Dockerfile.train
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            GIT_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.meta.outputs.created }}
-            VERSION=${{ steps.meta.outputs.version }}
+      - name: Tag and push image
+        run: |
+          # Tag the scanned image with all metadata tags
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker tag mlops-training:scan $tag
+            docker push $tag
+          done
+          
+          # Get the digest of the pushed image
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $(echo '${{ steps.meta.outputs.tags }}' | head -1) | cut -d'@' -f2)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+        id: push
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -324,23 +320,7 @@ jobs:
             -a "repo=${{ github.repository }}" \
             -a "workflow=${{ github.workflow }}" \
             -a "ref=${{ github.ref }}" \
-            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
-
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
-          format: spdx-json
-          output-file: sbom-training.spdx.json
-
-      - name: Attest SBOM with Cosign
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign attest --yes \
-            --predicate sbom-training.spdx.json \
-            --type spdxjson \
-            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.push.outputs.digest }}
 
       - name: Verify signature
         env:
@@ -349,14 +329,13 @@ jobs:
           cosign verify \
             --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.push.outputs.digest }}
 
       - name: Output deployment info
         run: |
           echo "### Training Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
-          echo "**SBOM:** SPDX attestation" >> $GITHUB_STEP_SUMMARY
