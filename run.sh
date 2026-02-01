@@ -3,6 +3,9 @@ set -e
 
 # MLOps workflow orchestrator
 
+# Make scripts executable
+chmod +x infra/github_infra/github_pat_script.sh 2>/dev/null || true
+
 COMPOSE_FILE="container_imgs/docker-compose.yml"
 
 case "${1:-help}" in

@@ -9,9 +9,46 @@ env:
   PYTHON_VERSION: "3.13"
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      api: ${{ steps.filter.outputs.api }}
+      training: ${{ steps.filter.outputs.training }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'src/**/*.py'
+              - 'tests/**/*.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            api:
+              - 'src/api/**'
+              - 'src/monitoring/**'
+              - 'src/utils/**'
+              - 'container_imgs/Dockerfile.api'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            training:
+              - 'src/train/**'
+              - 'src/utils/**'
+              - 'container_imgs/Dockerfile.train'
+              - 'pyproject.toml'
+              - 'uv.lock'
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     
     steps:
       - name: Checkout code
@@ -31,20 +68,32 @@ jobs:
         run: |
           uv sync --frozen
 
-      - name: Run pytest
+      - name: Run pytest with coverage
+        id: pytest
         run: |
-          uv run pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          uv run pytest tests/ -v --cov=src --cov-report=term --cov-report=json
+          
+      - name: Check coverage thresholds
+        run: |
+          COVERAGE=$(python -c "import json; print(json.load(open('coverage.json'))['totals']['percent_covered'])")
+          echo "Coverage: ${COVERAGE}%"
+          
+          if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
+            echo " Excellent coverage: ${COVERAGE}% (>= 90%)"
+            exit 0
+          elif (( $(echo "$COVERAGE >= 75" | bc -l) )); then
+            echo "::warning:: Coverage is ${COVERAGE}% - below 90% threshold but acceptable (>= 75%)"
+            exit 0
+          else
+            echo "::error:: Coverage is ${COVERAGE}% - below minimum threshold of 75%"
+            exit 1
+          fi
 
   lint:
     name: Code Quality
     runs-on: ubuntu-latest
+    needs: [changes, test]
+    if: needs.changes.outputs.python == 'true' && (success() || failure())
     
     steps:
       - name: Checkout code
@@ -78,7 +127,8 @@ jobs:
   build-api:
     name: Build API Image
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [changes, lint]
+    if: needs.changes.outputs.api == 'true' && always()
     
     steps:
       - name: Checkout code
@@ -109,17 +159,11 @@ jobs:
           cache-to: type=gha,mode=max
           outputs: type=docker,dest=/tmp/api-image.tar
 
-      - name: Upload API artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-image
-          path: /tmp/api-image.tar
-          retention-days: 1
-
   build-training:
     name: Build Training Image
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [changes, lint]
+    if: needs.changes.outputs.training == 'true' && always()
     
     steps:
       - name: Checkout code

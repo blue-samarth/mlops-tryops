@@ -23,15 +23,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     uv sync --frozen --no-install-project
 
-# Copy source code and install project
-COPY src/ /build/src/
+# Copy only training-related source code (exclude API modules)
+COPY src/__init__.py /build/src/
+COPY src/train/ /build/src/train/
+COPY src/utils/ /build/src/utils/
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen
 
-# ============================================================================
-# Stage 2: Runtime - Training environment
-# ============================================================================
 FROM python:3.13-slim-bookworm AS runtime
 
 # Re-declare ARGs for runtime stage
@@ -67,8 +66,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy virtual environment from builder
 COPY --from=builder --chown=mlops:mlops /build/.venv /app/.venv
 
-# Copy application code
-COPY --chown=mlops:mlops src/ ./src/
+# Copy only training application code (exclude API modules)
+COPY --chown=mlops:mlops src/__init__.py ./src/
+COPY --chown=mlops:mlops src/train/ ./src/train/
+COPY --chown=mlops:mlops src/utils/ ./src/utils/
 
 # Write git commit to file for model lineage tracking
 RUN echo "${GIT_COMMIT}" > /app/.git_commit && \
