@@ -1,0 +1,46 @@
+# Trivy Vulnerability Exceptions
+# Format: CVE-ID [space] reason for exception
+
+# =============================================================================
+# CRITICAL - Risk Accepted (Unfixable in Debian 12 base image)
+# =============================================================================
+
+# CVE-2025-7458: SQLite integer overflow vulnerability
+# Status: No fix available from Debian
+# Risk Assessment: LOW - Requires crafted SQL queries with specific integer operations
+# Mitigation: Application does not use SQLite directly, onnxruntime may use internally
+# Decision: Accept risk - switching to Alpine introduces other compatibility issues
+CVE-2025-7458
+
+# CVE-2023-45853: zlib heap-based buffer overflow in zipOpenNewFileInZip4_64
+# Status: Debian maintainers marked as "will_not_fix"
+# Risk Assessment: LOW - Requires processing malicious ZIP files
+# Mitigation: Application does not handle ZIP files in runtime
+# Decision: Accept risk - upstream considers low severity for typical use cases
+CVE-2023-45853
+
+# =============================================================================
+# HIGH - Risk Accepted (Unfixable in Debian 12 base image)
+# =============================================================================
+
+# CVE-2026-0861: glibc integer overflow in memalign
+# Status: No fix available from Debian yet
+# Risk Assessment: MEDIUM - Limited exploit scenarios
+# Mitigation: Modern ASLR and stack protections reduce exploitability
+# Decision: Accept risk - monitoring for Debian security updates
+CVE-2026-0861
+
+# CVE-2026-24882: GnuPG stack buffer overflow in tpm2daemon
+# Status: No fix available from Debian yet
+# Risk Assessment: LOW - TPM daemon not used in containerized environment
+# Mitigation: Container runs as non-root, no TPM access
+# Decision: Accept risk - attack surface not exposed in deployment
+CVE-2026-24882
+
+# =============================================================================
+# REVIEW SCHEDULE
+# =============================================================================
+# This file must be reviewed monthly
+# Next review: 2026-03-01
+# Owner: blue-samarth
+# Process: Check Debian security tracker for updates, re-assess risk
