@@ -1,0 +1,362 @@
+name: CD - Deploy and Sign
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  id-token: write      # Required for OIDC
+  contents: read       # Required for checkout
+  security-events: write  # Required for SARIF upload
+  packages: write      # Required for Cosign
+
+env:
+  PYTHON_VERSION: "3.13"
+  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_API_REPOSITORY_URL: ${{ secrets.ECR_API_REPOSITORY_URL }}
+  ECR_TRAINING_REPOSITORY_URL: ${{ secrets.ECR_TRAINING_REPOSITORY_URL }}
+  MODELS_BUCKET_NAME: ${{ secrets.MODELS_BUCKET_NAME }}
+  ENVIRONMENT: ${{ vars.ENVIRONMENT }}
+  DOCKER_BUILDKIT: ${{ vars.DOCKER_BUILDKIT }}
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      training: ${{ steps.filter.outputs.training }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'src/api/**'
+              - 'src/monitoring/**'
+              - 'src/utils/**'
+              - 'container_imgs/Dockerfile.api'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            training:
+              - 'src/train/**'
+              - 'src/utils/**'
+              - 'container_imgs/Dockerfile.train'
+              - 'pyproject.toml'
+              - 'uv.lock'
+
+  security-scan-api:
+    name: Security Scan - API
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./container_imgs/Dockerfile.api
+          load: true
+          tags: mlops-api:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mlops-api:scan
+          format: sarif
+          output: trivy-api-container.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-api-container.sarif
+          category: api-container
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-api-fs.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload filesystem scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-api-fs.sarif
+          category: api-filesystem
+
+  security-scan-training:
+    name: Security Scan - Training
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.training == 'true' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Training image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./container_imgs/Dockerfile.train
+          load: true
+          tags: mlops-training:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mlops-training:scan
+          format: sarif
+          output: trivy-training-container.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-training-container.sarif
+          category: training-container
+
+  push-and-sign-api:
+    name: Push and Sign - API
+    runs-on: ubuntu-latest
+    needs: [changes, security-scan-api]
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-api-deploy
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_API_REPOSITORY_URL }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+
+      - name: Build and push API image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./container_imgs/Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.created }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image with Cosign (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            -a "repo=${{ github.repository }}" \
+            -a "workflow=${{ github.workflow }}" \
+            -a "ref=${{ github.ref }}" \
+            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-api.spdx.json
+
+      - name: Attest SBOM with Cosign
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign attest --yes \
+            --predicate sbom-api.spdx.json \
+            --type spdxjson \
+            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+
+      - name: Verify signature
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
+            --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+            ${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+
+      - name: Output deployment info
+        run: |
+          echo "### API Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ECR_API_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
+          echo "**SBOM:** SPDX attestation" >> $GITHUB_STEP_SUMMARY
+
+  approve-training:
+    name: Approve Training Deployment
+    runs-on: ubuntu-latest
+    needs: [push-and-sign-api]
+    if: github.event_name == 'workflow_dispatch' && always()
+    steps:
+      - name: Wait for approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ github.actor }}
+          minimum-approvals: 1
+          issue-title: "Deploy Training Image?"
+          issue-body: "Please approve or deny the deployment of the training image to ECR."
+
+  push-and-sign-training:
+    name: Push and Sign - Training
+    runs-on: ubuntu-latest
+    needs: [changes, security-scan-training, approve-training]
+    if: |
+      always() && 
+      !cancelled() && 
+      (needs.changes.outputs.training == 'true' || 
+       (github.event_name == 'workflow_dispatch' && needs.approve-training.result == 'success'))
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-training-deploy
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_TRAINING_REPOSITORY_URL }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+
+      - name: Build and push Training image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./container_imgs/Dockerfile.train
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.created }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image with Cosign (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            -a "repo=${{ github.repository }}" \
+            -a "workflow=${{ github.workflow }}" \
+            -a "ref=${{ github.ref }}" \
+            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-training.spdx.json
+
+      - name: Attest SBOM with Cosign
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign attest --yes \
+            --predicate sbom-training.spdx.json \
+            --type spdxjson \
+            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+
+      - name: Verify signature
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign verify \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
+            --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+            ${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}
+
+      - name: Output deployment info
+        run: |
+          echo "### Training Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ECR_TRAINING_REPOSITORY_URL }}@${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Signed:** Cosign keyless signature" >> $GITHUB_STEP_SUMMARY
+          echo "**SBOM:** SPDX attestation" >> $GITHUB_STEP_SUMMARY
