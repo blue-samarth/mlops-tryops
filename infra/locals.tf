@@ -46,6 +46,10 @@ locals {
   enable_grafana         = coalesce(var.enable_grafana, true)
   metrics_retention_days = coalesce(var.metrics_retention_days, 30)
 
+  # GitHub OIDC Configuration
+  github_org  = coalesce(var.github_org, "your-github-org")
+  github_repo = coalesce(var.github_repo, "try_ops")
+
   # Common Tags
   common_tags = {
     Project     = local.name

@@ -1,6 +1,7 @@
 resource "aws_ecr_repository" "api" {
   name                 = local.ecr_api_repo_name
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = local.ecr_scan_on_push
@@ -43,6 +44,7 @@ resource "aws_ecr_lifecycle_policy" "api" {
 resource "aws_ecr_repository" "training" {
   name                 = local.ecr_training_repo_name
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = local.ecr_scan_on_push
