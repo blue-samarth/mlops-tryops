@@ -29,3 +29,6 @@ variable "metrics_retention_days" { default = 30 }
 
 variable "ecr_image_retention_count" { default = 5 }
 variable "ecr_scan_on_push" { default = true }
+
+variable "github_org" { default = null }
+variable "github_repo" { default = null }
