@@ -79,7 +79,7 @@ class ModelTrainer:
             self.model_storage: ModelStorage = ModelStorage(s3_ops=None)
         else:
             s3_ops: S3Operations = S3Operations(bucket_name=self.s3_bucket, region_name=settings.AWS_REGION)
-            self.model_storage: ModelStorage = ModelStorage(s3_ops)
+            self.model_storage = ModelStorage(s3_ops)
         
         self.model_version: str = generate_model_version()
         self.git_commit: str | None = get_git_commit()
