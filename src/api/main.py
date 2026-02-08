@@ -16,21 +16,13 @@ from src.monitoring import metrics
 # Configure logging with custom filter for request_id
 class RequestIDFilter(logging.Filter):
     def filter(self, record):
-        if not hasattr(record, 'request_id'):
-            record.request_id = 'N/A'
+        if not hasattr(record, 'request_id'): record.request_id = 'N/A'
         return True
 
-logging.basicConfig(
-    level=settings.LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s'
-)
-# Add the filter to all handlers
-for handler in logging.root.handlers:
-    handler.addFilter(RequestIDFilter())
+logging.basicConfig(level=settings.LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s')
+for handler in logging.root.handlers: handler.addFilter(RequestIDFilter())
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-# Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.RATE_LIMIT])
 
 
@@ -55,36 +47,19 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to load initial model: {e}")
         logger.warning("API will start without a model - predictions will fail until model is loaded")
     
-    # Start hot-reload background thread
     model_loader.start_hot_reload()
     
-    # Start drift detection service
     if settings.ENABLE_DRIFT_DETECTION:
         drift_service = get_drift_service()
         
-        # Initialize with current model's baseline
-        if model_loader.baseline:
-            drift_service.update_baseline(
-                model_loader.baseline, 
-                model_loader.current_version or "unknown"
-            )
-        
+        if model_loader.baseline: drift_service.update_baseline(model_loader.baseline, model_loader.current_version or "unknown")
         drift_service.start()
         logger.info("Drift detection service started")
     
-    # Set model info metric
-    if model_loader.current_version:
-        metrics.model_info.info({
-            "version": model_loader.current_version,
-            "bucket": settings.S3_BUCKET,
-            "environment": settings.ENVIRONMENT,
-        })
-    
+    if model_loader.current_version: metrics.model_info.info({ "version": model_loader.current_version, "bucket": settings.S3_BUCKET, "environment": settings.ENVIRONMENT,})
     logger.info("API ready to serve requests")
-    
     yield
     
-    # Shutdown
     logger.info("Shutting down ML Serving API...")
     model_loader.stop_hot_reload()
     
@@ -96,31 +71,20 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete")
 
 
-# Create FastAPI application
-app = FastAPI(
-    title="ML Serving API",
-    description="Production ML model serving with hot-reloading and drift detection",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-# Add rate limiter to app state
+app = FastAPI(title="ML Serving API", description="Production ML model serving with hot-reloading and drift detection", version="1.0.0", lifespan=lifespan,)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Request ID middleware (for tracing)
 app.add_middleware(RequestIDMiddleware)
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(health.router)
 app.include_router(prediction.router)
 
@@ -153,19 +117,10 @@ async def metrics_endpoint():
     if not settings.ENABLE_PROMETHEUS:
         return {"error": "Prometheus metrics disabled"}
     
-    return Response(
-        content=generate_latest(),
-        media_type=CONTENT_TYPE_LATEST,
-    )
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST, )
 
 
 if __name__ == "__main__":
     import uvicorn
     
-    uvicorn.run(
-        "src.api.main:app",
-        host=settings.API_HOST,
-        port=settings.API_PORT,
-        reload=False,  # Set to True for development
-        log_level=settings.LOG_LEVEL.lower(),
-    )
+    uvicorn.run("src.api.main:app", host=settings.API_HOST, port=settings.API_PORT, reload=False, log_level=settings.LOG_LEVEL.lower(), )

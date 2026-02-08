@@ -26,11 +26,7 @@ class SchemaGenerator:
         Returns:
             Schema dictionary with structural_schema, descriptive_stats, and hash
         """
-        feature_columns: list[str] = (
-            [col for col in data.columns if col != target_column]
-            if target_column
-            else list(data.columns)
-        )
+        feature_columns: list[str] = ([col for col in data.columns if col != target_column] if target_column else list(data.columns))
 
         structural_schema: list[dict[str, Any]] = []
         descriptive_stats: dict[str, Any] = {}
@@ -63,7 +59,6 @@ class SchemaGenerator:
                 descriptive_stats[column]["type"] = "categorical"
 
         schema_hash: str = SchemaGenerator._compute_structural_hash(structural_schema)
-
         logger.info(f"Generated schema for {len(feature_columns)} features (hash: {schema_hash})")
 
         return {
@@ -90,25 +85,4 @@ class SchemaGenerator:
         return hashlib.sha256(schema_str.encode()).hexdigest()[:32]
     
     @staticmethod
-    def validate_schema_compatibility(
-        new_data: pd.DataFrame, 
-        existing_schema: dict[str, Any], 
-        target_column: str | None = None
-    ) -> tuple[bool, list[str]]:
-        """
-        Validate if new data is compatible with existing schema.
-        Delegates to SchemaValidator for consistency.
-        
-        Args:
-            new_data: New DataFrame to validate
-            existing_schema: Existing schema to validate against
-            target_column: Optional target column to exclude from validation
-        
-        Returns:
-            Tuple of (is_compatible, list_of_errors)
-        """
-        return SchemaValidator.validate_schema_compatibility(
-            new_data=new_data,
-            existing_schema=existing_schema,
-            target_column=target_column
-        )
+    def validate_schema_compatibility(new_data: pd.DataFrame, existing_schema: dict[str, Any], target_column: str | None = None) -> tuple[bool, list[str]]: return SchemaValidator.validate_schema_compatibility(new_data=new_data, existing_schema=existing_schema, target_column=target_column)

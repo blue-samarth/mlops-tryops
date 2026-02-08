@@ -38,18 +38,11 @@ class Predictor:
         model_info: dict[str, Any] = self.model_loader.get_model_info()
         feature_names: list[str] = model_info["feature_names"]
 
-        try:
-            X = df[feature_names].values.astype(np.float32)
-        except (KeyError, ValueError, TypeError) as e:
-            raise ValueError(f"Invalid feature values: {e}")
+        try: X = df[feature_names].values.astype(np.float32)
+        except (KeyError, ValueError, TypeError) as e: raise ValueError(f"Invalid feature values: {e}")
         
-        # Validate for inf/nan values (security check)
         if not np.isfinite(X).all():
-            invalid_features = [
-                feature_names[i]
-                for i in range(X.shape[1])
-                if not np.isfinite(X[:, i]).all()
-            ]
+            invalid_features = [ feature_names[i] for i in range(X.shape[1]) if not np.isfinite(X[:, i]).all() ]
             raise ValueError(f"Invalid values (inf/nan) in features: {invalid_features}")
 
         with self.model_loader.model_lock:
@@ -98,24 +91,16 @@ class Predictor:
         model_info: dict[str, Any] = self.model_loader.get_model_info()
         feature_names: list[str] = model_info["feature_names"]
 
-        try:
-            X: np.ndarray = df[feature_names].values.astype(np.float32)
-        except (KeyError, ValueError, TypeError) as e:
-            raise ValueError(f"Invalid feature values in batch: {e}")
+        try: X: np.ndarray = df[feature_names].values.astype(np.float32)
+        except (KeyError, ValueError, TypeError) as e: raise ValueError(f"Invalid feature values in batch: {e}")
         
-        # Validate for inf/nan values (security check)
         if not np.isfinite(X).all():
-            invalid_features = [
-                feature_names[i]
-                for i in range(X.shape[1])
-                if not np.isfinite(X[:, i]).all()
-            ]
+            invalid_features: list[str] = [feature_names[i] for i in range(X.shape[1]) if not np.isfinite(X[:, i]).all()]
             raise ValueError(f"Invalid values (inf/nan) in batch features: {invalid_features}")
 
         with self.model_loader.model_lock:
             model = self.model_loader.model
-            if model is None:
-                raise RuntimeError("Model not loaded yet — cannot get input/output names")
+            if model is None: raise RuntimeError("Model not loaded yet — cannot get input/output names")
             
             input_name = model.get_inputs()[0].name
             label_name = model.get_outputs()[0].name
@@ -134,7 +119,6 @@ class Predictor:
                 if len(probs) == 2: probability = float(probs[1])
                 else:
                     probability = float(probs[predicted_class])
-                
                 predictions.append({"prediction": probability, "prediction_class": predicted_class, })
         
         return {
@@ -159,10 +143,7 @@ class Predictor:
         schema = metadata.get("schema")
         if not schema: raise RuntimeError("Model schema not available")
         
-        is_compatible, errors = SchemaValidator.validate_schema_compatibility(
-            new_data=df, 
-            existing_schema=schema
-        )
+        is_compatible, errors = SchemaValidator.validate_schema_compatibility(new_data=df, existing_schema=schema)
 
         if not is_compatible:
             error_msg = "; ".join(errors)
