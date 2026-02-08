@@ -13,12 +13,21 @@ from src.api.middleware import RequestIDMiddleware
 from src.utils import settings
 from src.monitoring import metrics
 
-# Configure logging
+# Configure logging with custom filter for request_id
+class RequestIDFilter(logging.Filter):
+    def filter(self, record):
+        if not hasattr(record, 'request_id'):
+            record.request_id = 'N/A'
+        return True
+
 logging.basicConfig(
     level=settings.LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s',
-    defaults={'request_id': 'N/A'}
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s'
 )
+# Add the filter to all handlers
+for handler in logging.root.handlers:
+    handler.addFilter(RequestIDFilter())
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 # Initialize rate limiter
