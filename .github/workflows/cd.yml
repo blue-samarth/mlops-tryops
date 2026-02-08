@@ -227,12 +227,7 @@ jobs:
         with:
           images: ${{ env.ECR_API_REPOSITORY_URL }}
           tags: |
-            type=ref,event=branch
-            type=sha,format=short
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+            type=sha,format=short,prefix=sha-
 
       - name: Tag and push image
         run: |
@@ -322,12 +317,7 @@ jobs:
         with:
           images: ${{ env.ECR_TRAINING_REPOSITORY_URL }}
           tags: |
-            type=ref,event=branch
-            type=sha,format=short
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+            type=sha,format=short,prefix=sha-
 
       - name: Tag and push image
         run: |
