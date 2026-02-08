@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.api.services.model_loader import ModelLoader
-from src.train.schema_generator import SchemaGenerator
+from src.utils.schema_validator import SchemaValidator
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -159,7 +159,10 @@ class Predictor:
         schema = metadata.get("schema")
         if not schema: raise RuntimeError("Model schema not available")
         
-        is_compatible, errors = SchemaGenerator.validate_schema_compatibility(new_data=df, existing_schema=schema)
+        is_compatible, errors = SchemaValidator.validate_schema_compatibility(
+            new_data=df, 
+            existing_schema=schema
+        )
 
         if not is_compatible:
             error_msg = "; ".join(errors)
