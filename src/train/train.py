@@ -16,6 +16,7 @@ from skl2onnx.common.data_types import FloatTensorType
 
 from src.utils import S3Operations, settings
 from src.utils.model_storage import ModelStorage
+from src.utils.serving_pointer import ServingPointerManager
 from src.train.schema_generator import SchemaGenerator
 from src.train.baseline_generator import BaselineGenerator
 
@@ -42,8 +43,7 @@ def get_git_commit() -> str | None:
     try:
         with open('/app/.git_commit', 'r') as f:
             commit = f.read().strip()
-            if commit and commit != 'unknown':
-                return commit
+            if commit and commit != 'unknown': return commit
     except FileNotFoundError:
         pass
     
@@ -189,6 +189,8 @@ if __name__ == "__main__":
     parser.add_argument("--data", type=str, required=True, help="Path to training data CSV")
     parser.add_argument("--target", type=str, default="target", help="Target column name")
     parser.add_argument("--test-size", type=float, default=0.2, help="Test split ratio")
+    parser.add_argument("--auto-promote", action="store_true", default=True, help="Auto-promote to production")
+    parser.add_argument("--no-auto-promote", dest="auto_promote", action="store_false", help="Skip auto-promotion")
     
     args: argparse.Namespace = parser.parse_args()
     
@@ -197,3 +199,11 @@ if __name__ == "__main__":
     
     print(f"\nTraining complete! Model version: {results['model_version']}")
     print(f"Metrics: {results['metrics']}")
+    
+    if args.auto_promote:
+        print(f"\nPromoting {results['model_version']} to production...")
+        pointer_manager = ServingPointerManager(s3_bucket=settings.S3_BUCKET, environment=settings.ENVIRONMENT or "production", region=settings.AWS_REGION )
+        pointer = pointer_manager.promote_model( model_version=results['model_version'], promoted_by="training-pipeline", promotion_reason=f"Automated training deployment - Accuracy: {results['metrics'].get('accuracy', 'N/A')}")
+        print(f" Promoted to production serving")
+        print(f"Serving pointer: {pointer_manager.s3_ops.get_s3_uri(pointer_manager.pointer_key)}")
+
